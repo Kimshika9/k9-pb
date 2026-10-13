@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.node.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.worker.tsbuildinfo",
+    "types": ["@cloudflare/workers-types"],
+    "lib": ["ES2023"],
+    "module": "ESNext",
+    "moduleResolution": "bundler"
+  },
+  "include": ["worker", "shared"]
+}
