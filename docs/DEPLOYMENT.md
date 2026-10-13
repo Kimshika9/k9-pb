@@ -1,6 +1,6 @@
 # Setup and deployment
 
-**Do not execute remote steps without explicit owner confirmation.** Phase 1 implementation does not deploy or register a webhook. Local setup and tests do not require a Cloudflare account.
+**Do not execute remote steps without explicit owner confirmation.** The owner's request to set up and deploy on Cloudflare authorizes these steps; credentials are still required. Local setup and tests do not require a Cloudflare account.
 
 ## Local setup
 
@@ -15,26 +15,46 @@ Credentials are required for live auth and Telegram permission checks. A normal 
 
 ## Production preparation (after confirmation)
 
-Authenticate Wrangler and create a D1 database:
+The production Worker target is **`k9-pb`**, matching the Git-connected project. The D1 binding is `DB`, with database name **`k9-post-studio`**. There is deliberately no fake database UUID: Wrangler 4 resolves an existing database by name or provisions it on deployment. It does not delete or reset an existing database.
+
+Authenticate Wrangler in a local terminal, or securely provide `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` in the cloud execution environment. The token must belong to the intended account and allow **Workers Scripts: Edit**, **D1: Edit**, and **Account Settings: Read**. A token held by Cloudflare Builds is not automatically available in a separate Codex workspace. Never paste tokens in chat or commit them.
 
 ```sh
 npx wrangler login
-npx wrangler d1 create k9-post-studio
-```
-
-Replace the all-zero `database_id` in `wrangler.jsonc` with the returned UUID. D1 identifiers are configuration, not credentials. Verify the Cloudflare account and target database, then apply the migration and set **all four Worker secrets** interactively:
-
-```sh
-npm run db:migrate:remote
-npx wrangler secret put TELEGRAM_BOT_TOKEN
-npx wrangler secret put OWNER_TELEGRAM_ID
-npx wrangler secret put TELEGRAM_WEBHOOK_SECRET
-npx wrangler secret put MINI_APP_URL
+npx wrangler whoami
 npm run check
 npm run deploy
 ```
 
-Use your final HTTPS app URL for `MINI_APP_URL`, such as your assigned Workers URL or custom domain. If the named Worker does not exist yet, Wrangler may offer to create it while storing a secret; that is a remote action covered by the same confirmation. Some accounts require the initial Worker deployment before `secret put`: in that case deploy the validated build (all authenticated routes fail closed until configured), set the secrets, and verify again. No credentials go into `wrangler.jsonc` or Vite.
+`npm run deploy` builds, deploys the Worker/assets, provisions or reuses D1, and then applies both additive migrations remotely. The first deployment remains inaccessible to private users until secrets are configured. If a remote migration fails, fix it and rerun `npm run db:migrate:remote`; migrations already applied are skipped. A successful Worker upload alone does not establish that the database or authenticated app is ready.
+
+Wrangler prints the actual HTTPS Workers URL after deployment. Use that URL for `MINI_APP_URL`, then set **all four Worker secrets** interactively:
+
+```sh
+npx wrangler secret put TELEGRAM_BOT_TOKEN
+npx wrangler secret put OWNER_TELEGRAM_ID
+npx wrangler secret put TELEGRAM_WEBHOOK_SECRET
+npx wrangler secret put MINI_APP_URL
+```
+
+Use your final HTTPS app URL for `MINI_APP_URL`, such as your assigned Workers URL or custom domain. Generate `TELEGRAM_WEBHOOK_SECRET` securely with at least 32 random characters. No credentials go into `wrangler.jsonc`, frontend environment variables, or Vite. `keep_vars` preserves dashboard-configured Worker variables on later deployments; credentials should still be stored as encrypted secrets.
+
+## Cloudflare Builds settings
+
+For the Git-connected **`k9-pb`** Worker, open **Settings → Build** and use:
+
+| Setting           | Value               |
+| ----------------- | ------------------- |
+| Repository        | `Kimshika9/k9-pb`   |
+| Production branch | `main`              |
+| Root directory    | `/`                 |
+| Build command     | `npm run build`     |
+| Deploy command    | `npm run deploy:ci` |
+| Node.js           | 24 or newer         |
+
+The deploy command is essential: plain `npx wrangler deploy` does not apply SQL migrations. Ensure the build token has D1 edit permission as well as Worker deployment permission. If permission is denied, use an appropriately scoped token or provision and migrate the database with authorized CLI access before retrying. Production secrets belong under the Worker's **Settings → Variables and Secrets**, not ordinary frontend build variables.
+
+If a build fails after "Success: Build command completed", inspect the final deployment error rather than rebuilding the editor. The supplied screenshot stops before that error. The previous repository configuration had an all-zero database UUID and a different Worker name; those have been corrected, but remote deployment cannot be verified without account access. Do not invent a `workers.dev` URL: the account subdomain comes from Cloudflare.
 
 ## Register the webhook (also requires authorization)
 
@@ -73,6 +93,6 @@ Choose a fresh random secret of at least 32 characters, using only `A-Z a-z 0-9 
 - Webhook requests with missing/wrong secret return 401.
 - Dashboard data comes from D1; channels require explicit approval, owner admin rights, and bot posting permission.
 - Revoking approval removes the destination and cancels pending jobs.
-- No publishing or scheduler runs in Phase 1.
+- No publishing or scheduler runs in Phase 1 or Phase 2.
 
 Live acceptance checks need real credentials, an HTTPS Telegram launch URL, a configured bot and Cloudflare account. They cannot be completed by local mocks. Inspect logs only with redaction; do not capture initData or token-bearing Telegram URLs. Back up D1 before future schema upgrades; prefer additive migrations and explicit rollback plans.

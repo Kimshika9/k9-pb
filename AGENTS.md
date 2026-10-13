@@ -15,6 +15,7 @@
 - Webhook requests require `X-Telegram-Bot-Api-Secret-Token`; only the owner in the owner's private chat receives `/start` responses or registers media. Never register non-owner/group media.
 - Future publish/edit/retry paths must call `requireApprovedChannel` immediately before sending, check current Telegram permissions, and prevent revoked destinations from receiving content.
 - Do not deploy, apply remote migrations, register webhooks, or create remote resources without explicit user authorization.
+- The Cloudflare Worker target is `k9-pb`; D1 is resolved by the existing `k9-post-studio` database name. Never restore a fake database UUID. `npm run deploy` includes remote migrations, and Cloudflare Builds must use `npm run deploy:ci` after its build step. Keep deployment authorization separate from credential availability; never claim a live URL without verifying the remote deployment.
 
 ## Quality and data
 

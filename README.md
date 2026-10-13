@@ -84,7 +84,7 @@ The protected Phase 2 endpoints below extend this contract. There are no publish
 
 `.env.example` contains placeholders only. Use `.dev.vars` locally and **Cloudflare secrets** remotely for `TELEGRAM_BOT_TOKEN`, `OWNER_TELEGRAM_ID`, `TELEGRAM_WEBHOOK_SECRET`, and `MINI_APP_URL`. Never use `VITE_` prefixes for these values, commit local variable files, or log initData.
 
-Follow [deployment instructions](docs/DEPLOYMENT.md) only after explicit deployment confirmation. The database UUID in `wrangler.jsonc` is a local placeholder; replace it with the created D1 database ID before deployment. No cloud resources were created and nothing was deployed as part of implementation.
+Follow [deployment instructions](docs/DEPLOYMENT.md) only after explicit deployment confirmation. The Worker is named `k9-pb`, matching the connected Cloudflare project. The D1 binding uses the database name `k9-post-studio`: Wrangler reuses it or provisions it on deployment instead of using a placeholder UUID. `npm run deploy` builds, deploys and applies additive remote migrations. For Cloudflare Builds, use `npm run build` as the build command and `npm run deploy:ci` as the deploy command. Live deployment still requires Cloudflare access and Worker secrets; passing a local build does not establish a successful deployment.
 
 Read [security notes](docs/SECURITY.md) and [official Bot API 10.3 research](docs/TELEGRAM_RICH_MESSAGES.md).
 

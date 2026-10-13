@@ -1,8 +1,10 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "k9-post-studio",
+  "name": "k9-pb",
   "main": "worker/index.ts",
   "compatibility_date": "2026-10-06",
+  "workers_dev": true,
+  "keep_vars": true,
   "assets": {
     "not_found_handling": "single-page-application",
     "run_worker_first": ["/api/*", "/telegram/*"],
@@ -11,7 +13,6 @@
     {
       "binding": "DB",
       "database_name": "k9-post-studio",
-      "database_id": "00000000-0000-0000-0000-000000000000",
       "migrations_dir": "migrations",
     },
   ],
