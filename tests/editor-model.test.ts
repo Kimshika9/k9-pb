@@ -20,6 +20,21 @@ const doc = (...blocks: EditorDocument["blocks"]): EditorDocument => ({
   blocks,
 });
 describe("structured editor operations", () => {
+  it("rejects all formatted button labels while preserving plain Unicode labels", () => {
+    const b = createBlock("buttons");
+    if (b.type !== "buttons") throw Error();
+    b.buttons[0]!.action = { type: "url", value: "https://example.com" };
+    for (const marks of [
+      [{ type: "bold" as const }],
+      [{ type: "link" as const, href: "https://example.com" }],
+    ]) {
+      b.buttons[0]!.label = [{ text: "Button", marks }];
+      expect(validateForTelegram(doc(b))[0]?.message).toContain("plain text");
+      expect(() => serializeRichMessage(doc(b))).toThrow("plain text");
+    }
+    b.buttons[0]!.label = plain("မြန်မာ / Open");
+    expect(validateForTelegram(doc(b))).toHaveLength(0);
+  });
   it("creates every typed block and preserves stable IDs during edits", () => {
     for (const type of [
       "heading",

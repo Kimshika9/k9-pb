@@ -3,7 +3,9 @@ import { DatabaseSync } from "node:sqlite";
 import { readFileSync, readdirSync } from "node:fs";
 import type { Env } from "../worker/env";
 
-export const TEST_TOKEN = "test-only-bot-token";
+// Synthetic, structurally valid fixture. Never use as deployment configuration.
+export const TEST_TOKEN =
+  "123456789:TEST_ONLY_SYNTHETIC_TOKEN_NOT_A_CREDENTIAL";
 export const OWNER_ID = 123456789;
 export function signedInitData(
   options: {

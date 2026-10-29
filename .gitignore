@@ -13,3 +13,9 @@ coverage/
 !.vscode/extensions.json
 .idea/
 .DS_Store
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.k9-webhook-backup.json
+.k9-private-*

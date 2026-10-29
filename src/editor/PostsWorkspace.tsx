@@ -15,6 +15,7 @@ import type { Draft, DraftSummary, Template } from "../../shared/editor/model";
 import { cloneDocument } from "../../shared/editor/operations";
 import { api } from "../lib/api";
 import { DraftEditor } from "./DraftEditor";
+import { DeliveryWorkspace } from "./DeliveryWorkspace";
 export function PostsWorkspace({
   channels,
   onDirtyChange,
@@ -23,13 +24,16 @@ export function PostsWorkspace({
   onDirtyChange: (dirty: boolean) => void;
 }) {
   const [drafts, setDrafts] = useState<DraftSummary[]>([]),
+    [unavailableTemplates, setUnavailableTemplates] = useState(0),
     [templates, setTemplates] = useState<Template[]>([]),
     [selected, setSelected] = useState<Draft | null>(null),
     [query, setQuery] = useState(""),
     [loading, setLoading] = useState(true),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
-    [tab, setTab] = useState<"drafts" | "templates">("drafts"),
+    [tab, setTab] = useState<
+      "drafts" | "templates" | "published" | "scheduled"
+    >("drafts"),
     [offset, setOffset] = useState<number | null>(null),
     [rename, setRename] = useState<{ template: Template; name: string } | null>(
       null,
@@ -45,12 +49,16 @@ export function PostsWorkspace({
             `/api/drafts?q=${encodeURIComponent(query)}`,
             options,
           ),
-          api<{ templates: Template[] }>("/api/templates", options),
+          api<{ templates: Template[]; unavailableTemplates?: number }>(
+            "/api/templates",
+            options,
+          ),
         ]);
         if (!signal?.aborted) {
           setDrafts(a.drafts);
           setOffset(a.nextOffset);
           setTemplates(b.templates);
+          setUnavailableTemplates(b.unavailableTemplates ?? 0);
         }
       } catch (e) {
         if (!signal?.aborted)
@@ -183,6 +191,14 @@ export function PostsWorkspace({
     );
   return (
     <section className="posts-workspace">
+      {unavailableTemplates > 0 && (
+        <p className="error-inline" role="status">
+          {unavailableTemplates} saved template(s) use an unsupported format and
+          have been preserved. Your other templates and drafts are available;
+          ask the owner to review a database backup before importing legacy
+          content.
+        </p>
+      )}
       <div className="workspace-actions">
         <div className="segmented-tabs">
           <button
@@ -196,6 +212,18 @@ export function PostsWorkspace({
             aria-pressed={tab === "templates"}
           >
             <Layers3 size={16} /> Templates
+          </button>
+          <button
+            onClick={() => setTab("published")}
+            aria-pressed={tab === "published"}
+          >
+            Published
+          </button>
+          <button
+            onClick={() => setTab("scheduled")}
+            aria-pressed={tab === "scheduled"}
+          >
+            Scheduled
           </button>
         </div>
         <button
@@ -226,7 +254,14 @@ export function PostsWorkspace({
           </button>
         </div>
       )}
-      {loading ? (
+      {tab === "published" || tab === "scheduled" ? (
+        <DeliveryWorkspace
+          key={tab}
+          mode={tab}
+          channels={channels}
+          onDraft={(draft) => setSelected(draft)}
+        />
+      ) : loading ? (
         <div className="workspace-loading" role="status">
           <LoaderCircle className="spin" size={23} /> Loading your {tab}…
         </div>

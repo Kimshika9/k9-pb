@@ -102,8 +102,8 @@ export async function revokeChannel(
       "UPDATE channels SET active=0, approved_at=NULL, updated_at=? WHERE id=?",
     ).bind(new Date().toISOString(), id),
     env.DB.prepare(
-      "UPDATE scheduled_jobs SET status='cancelled', updated_at=? WHERE post_id IN (SELECT id FROM posts WHERE channel_id=?) AND status IN ('pending','running')",
-    ).bind(new Date().toISOString(), id),
+      "UPDATE scheduled_jobs SET status=CASE WHEN delivery_state='sending' THEN 'failed' ELSE 'cancelled' END, delivery_state=CASE WHEN delivery_state='sending' THEN 'uncertain' ELSE 'cancelled' END, last_error_code=CASE WHEN delivery_state='sending' THEN 'CHANNEL_REVOKED_IN_FLIGHT' ELSE 'CHANNEL_REVOKED' END, updated_at=? WHERE (channel_id=? OR (channel_id IS NULL AND post_id IN (SELECT id FROM posts WHERE channel_id=?))) AND status IN ('pending','running')",
+    ).bind(new Date().toISOString(), id, id),
     env.DB.prepare(
       "UPDATE posts SET status='draft', scheduled_at=NULL, updated_at=? WHERE channel_id=? AND status='scheduled'",
     ).bind(new Date().toISOString(), id),

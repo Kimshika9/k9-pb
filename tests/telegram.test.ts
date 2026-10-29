@@ -25,6 +25,9 @@ describe("Telegram HTTP client", () => {
     ),
     new Response("not-json", { status: 502 }),
     Response.json({ ok: true }),
+    Response.json(null),
+    Response.json([]),
+    Response.json({ ok: true, result: null }),
   ])("sanitizes invalid upstream responses", async (response) => {
     const transport = vi.fn<typeof fetch>().mockResolvedValue(response);
     await expect(

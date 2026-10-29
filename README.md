@@ -1,6 +1,6 @@
 # K9 Post Studio
 
-Private, owner-only Telegram Mini App for managing advanced channel posts. **Phase 1** provides authentication, dashboard, channel approval and the bot launch flow. **Phase 2** adds the visual rich editor, persistent drafts, templates, media selection and validated Telegram JSON export. Publishing and scheduling remain Phase 3 work.
+Private, owner-only Telegram Mini App for managing advanced channel posts. **Phase 1** provides authentication, dashboard, channel approval and the bot launch flow. **Phase 2** adds the visual rich editor, persistent drafts, templates, media selection and validated Telegram JSON export. **Phase 3** adds approved rich publishing, private Telegram previews, published-message management, UTC scheduling and the signed Python companion. **Phase 3.1** adds a real advanced Python Telegram bot with an explicit, confirmed polling mode and shared backend bridge. The approved production rollout is deployed; live owner authentication and Telegram acceptance remain unverified.
 
 ## Run locally
 
@@ -67,7 +67,7 @@ This repository was scaffolded with **create-cloudflare 2.73.4**, `--framework=r
 
 ## API contract
 
-Private endpoints require `Authorization: tma <raw Telegram initData>` on **every request**. Missing, forged, expired, or malformed credentials return **401**; a correctly signed non-owner returns **403**. Missing server configuration returns **503**. Responses are `Cache-Control: no-store` and error responses use `{ "error": { "code": "...", "message": "..." } }`.
+Mini App private endpoints require `Authorization: tma <raw Telegram initData>` on **every request**. Only the explicitly scoped `/api/cli/*` and `/api/bridge/*` namespaces use separate signed controller/bot credentials described in [Phase 3](docs/PHASE3.md) and [the Python bot guide](docs/PYTHON_BOT.md). Missing, forged, expired, or malformed credentials return **401**; a correctly signed non-owner returns **403**. Missing server configuration returns **503**. Responses are `Cache-Control: no-store` and error responses use `{ "error": { "code": "...", "message": "..." } }`.
 
 | Method | Endpoint            | Behavior                                                                                                          |
 | ------ | ------------------- | ----------------------------------------------------------------------------------------------------------------- |
@@ -78,19 +78,29 @@ Private endpoints require `Authorization: tma <raw Telegram initData>` on **ever
 | DELETE | `/api/channels/:id` | Revokes approval, cancels pending/running jobs, returns scheduled posts to draft                                  |
 | POST   | `/telegram/webhook` | Telegram secret header required; only owner `/start` in owner's private chat produces a launch button             |
 
-The protected Phase 2 endpoints below extend this contract. There are no publishing, scheduling, signup or public profile endpoints. Public static files contain only the application shell and product copy. No private data is bundled into the frontend. Channel reads are capped at 100; pagination should precede supporting larger workspaces.
+The protected Phase 2 endpoints below extend this contract. Publishing and scheduling routes are owner-protected as documented below; no signup or public profile endpoints exist. Public static files contain only the application shell and product copy. No private data is bundled into the frontend. Channel reads are capped at 100; pagination should precede supporting larger workspaces.
 
 ## Credentials and deployment
 
+Production execution status (2026-10-21): the approved rollout completed. All five production D1 migrations are applied; Worker version `ac2668e1-f6ca-42a3-8818-c2e116a57095` was deployed at 100% with the Python bridge, preserved bindings, all approved bridge scopes and automatic publishing disabled. A later live unsigned bridge check returned the expected **401 `INVALID_BRIDGE_AUTH`**, clearing the earlier 503 configuration-format blocker at that route. The owner's signed Python request is still rejected; use the safe device diagnostic below to distinguish stale local settings/exported overrides, clock errors and signature mismatch. Actual owner HMAC/identity agreement remains unverified. See the [rollout record](docs/PRODUCTION_ROLLOUT.md). Do not rerun completed migrations or rebuild the older GitHub main branch.
+
 `.env.example` contains placeholders only. Use `.dev.vars` locally and **Cloudflare secrets** remotely for `TELEGRAM_BOT_TOKEN`, `OWNER_TELEGRAM_ID`, `TELEGRAM_WEBHOOK_SECRET`, and `MINI_APP_URL`. Never use `VITE_` prefixes for these values, commit local variable files, or log initData.
 
-Follow [deployment instructions](docs/DEPLOYMENT.md) only after explicit deployment confirmation. The Worker is named `k9-pb`, matching the connected Cloudflare project. The D1 binding uses the database name `k9-post-studio`: Wrangler reuses it or provisions it on deployment instead of using a placeholder UUID. `npm run deploy` builds, deploys and applies additive remote migrations. For Cloudflare Builds, use `npm run build` as the build command and `npm run deploy:ci` as the deploy command. Live deployment still requires Cloudflare access and Worker secrets; passing a local build does not establish a successful deployment.
+Follow [deployment instructions](docs/DEPLOYMENT.md) only after explicit deployment confirmation. Production is <https://k9-pb.kimshikano.workers.dev/>. The Worker is `k9-pb`, with binding `DB` to the existing `k9-post-studio` database. Pin its verified UUID in `wrangler.jsonc` before deployment; no fake UUID or automatic resource provisioning is permitted. `npm run deploy` builds and deploys; **remote migrations are a separate, approved operation after backup**. Cloudflare Builds uses `npm run build` and `npm run deploy:ci`, with a verified `CLOUDFLARE_ACCOUNT_ID`. Pushing `main` may trigger deployment and therefore also requires approval during recovery. Passing a local build does not establish production readiness.
+
+If Telegram shows **“The studio is not configured yet”**, check the production Worker's runtime secrets, especially `TELEGRAM_BOT_TOKEN` and `OWNER_TELEGRAM_ID`. This error occurs before database queries. Secret names in build settings do not automatically become Worker runtime secrets. See [the recovery audit and exact setup steps](docs/RECOVERY_AUDIT.md); do not replace configured credentials blindly or expose them through frontend variables.
+
+For Python `INVALID_AUTH`, check the public bridge route first: `python check_k9_backend.py` needs no credentials or dependencies. Expected unsigned response is **401 `INVALID_BRIDGE_AUTH`**; **401 `INVALID_AUTH`** indicates old/misrouted backend code. On 2026-10-29, GitHub main still pointed to the older Phase 2 commit; direct production verification is currently blocked by the cloud environment proxy. The corrected backend/bot source is available on [the recovery branch](https://github.com/Kimshika9/k9-pb/tree/codex/bridge-recovery-20261029); it has not been merged or deployed by this follow-up. Do not infer that replacing the bridge secret will fix this route mismatch.
+
+For Python `INVALID_BRIDGE_AUTH`, use `python bot.py --diagnose-bridge` to check the actual `.env` path, exported overrides, timestamp/header versus HMAC rejection and approximate device/server clock difference without displaying credentials. See [bridge diagnostics](docs/PYTHON_BOT.md#diagnose-a-bridge-rejection-without-sharing-credentials). This performs no publishing or receiver changes; it does not automatically repair secret agreement.
 
 Read [security notes](docs/SECURITY.md) and [official Bot API 10.3 research](docs/TELEGRAM_RICH_MESSAGES.md).
 
 ## Phase 2 usage and APIs
 
 Open **Posts** to create, search and restore drafts. **Templates** includes four samples and your reusable layouts. Select a block to edit its properties, use **Preview** to inspect the post, and **Telegram JSON** to download a validated payload. Drafts autosave after 1200 ms; stale revisions return 409 and preserve local changes for recovery.
+
+The app warns two minutes before its 15-minute Telegram session expires. Session recovery survives reloads; optionally enable **Keep unsaved recovery on this device** for recovery across sessions (up to seven days). Expired copies are rejected and removed when accessed; browser storage cannot erase them while the app is closed. Recovery contains private post content, never initData or credentials. It is offered only after authenticating and opening the corresponding server draft. Restore explicitly; stale recovery retains its old revision and offers copy/reload rather than silently overwriting. Successful saves remove recovery. Device storage is optional and can be unavailable; download Backup before closing Telegram when needed. Button labels use plain Unicode text; formatting and hyperlinks belong in post text and the button's action field.
 
 | Method             | Endpoint                    | Behavior                                                                        |
 | ------------------ | --------------------------- | ------------------------------------------------------------------------------- |
@@ -104,14 +114,45 @@ Open **Posts** to create, search and restore drafts. **Templates** includes four
 
 Send photos/videos/documents to the bot's private chat, refresh the editor media picker, then select the registered ID. Existing same-bot IDs can be checked through `getFile`. Previews use placeholders, not credential-bearing Telegram URLs. Studio supports registration up to 10 MB for photos and 20 MB for videos/documents; native uploads and large-video acceptance remain unverified.
 
-Apply `npm run db:migrate:local` to your existing local D1 before running the upgraded Worker. Migration 0002 only adds columns and indexes. Preserve `.dev.vars` and the existing database; no reset or new project is needed.
+Apply `npm run db:migrate:local` to your existing local D1 before running the upgraded Worker. Migrations 0002–0005 add editor fields, publishing records and a receiver fence while preserving existing data. Preserve `.dev.vars` and the existing database; no reset or new project is needed.
 
 Read [the Phase 2 editor guide and Phase 3 tasks](docs/PHASE2_EDITOR.md), [verification results](docs/VERIFICATION.md), and [Telegram wire-schema research](docs/TELEGRAM_RICH_MESSAGES.md). Captured local screenshots: [desktop editor](docs/screenshots/phase2-editor-1440.png), [mobile editor](docs/screenshots/phase2-editor-390.png), [desktop preview](docs/screenshots/phase2-preview-1440.png), [mobile preview](docs/screenshots/phase2-preview-390.png).
 
-## Phase 3 TODOs
+## Remaining live acceptance and future work
 
-- Real Telegram preview, owner-approved channel publishing/editing and hosted Bot API 10.3 acceptance tests.
-- Recheck approved channels and live Telegram permissions at every send/edit/retry; retain message IDs and sanitized failures.
-- Callback workflows, durable scheduling, retries, cancellation, idempotency and timezone handling.
+- Hosted Bot API Rich Message acceptance and dedicated test-channel preview/publish/edit/delete verification.
+- Production account/secrets/binding/migration verification and approved rollout; current local tests do not repair absent production secrets.
+- Business callback workflows, higher-throughput scheduling budgets and long-term audit/nonce retention policies.
 - Native Telegram Android testing, Myanmar IME/clipboard, download behavior and verified media kind/size compatibility.
 - Legacy import, larger template pagination, audit viewer and media/webhook retention lifecycle.
+
+## Phase 3 publishing and Python
+
+Open a saved draft for **Send Test Preview**, confirmed **Publish Now**, or UTC/Yangon **Schedule Post**. **Published** manages receipts, editing copies, republishing, deletion and manual uncertain-delivery reconciliation. **Scheduled** manages pending jobs and safe retries. Automatic delivery remains disabled unless explicitly configured.
+
+The executable root [bot.py](bot.py) requires Python 3.12+ and [Python dependencies](requirements.txt). In **Python mode** it is a real python-telegram-bot Application with interactive owner-private commands and polling. In **Cloudflare mode** it preserves the Worker webhook and starts no polling. Both use the existing Worker business services; mode switching requires explicit confirmation. The former CLI commands remain available for compatibility. See [the full Phase 3 guide](docs/PHASE3.md) for commands, API contracts, state/lease semantics, configuration, test-channel checklist and rollback. Additive migration [0003_publishing.sql](migrations/0003_publishing.sql) and the uncertainty-lock migration 0004 are applied locally only; remote migration state is unverified.
+
+New implementation: `worker/lib/publishing.ts`, `publishing-routes.ts`, `scheduler.ts`, `cli-auth.ts`, `bot-commands.ts`; shared contracts in `shared/publishing.ts`; UI in `src/editor/PublishingPanel.tsx` and `DeliveryWorkspace.tsx`. Sources/drafts remain separate from per-channel publication snapshots. Telegram delivery and D1 completion are not atomic; uncertain sends require inspection and never blindly retry.
+
+```sh
+python -m py_compile bot.py
+python -m pytest
+npm run format:check
+```
+
+[Verification results](docs/VERIFICATION.md) distinguish automated tests, local browser/Worker tests and unperformed real Telegram/production checks.
+
+## Run the advanced Python Telegram bot
+
+Use the reviewed workspace containing Phase 3.1; a fresh main clone does not yet contain these uncommitted changes. The signed bridge and migration 0005 must be rolled out with approval before live use. Configure the separate Worker K9_BRIDGE_SECRET and permitted scopes, preserving existing secrets/D1.
+
+```sh
+pip install -r requirements.txt
+python bot.py
+```
+
+First run collects hidden-input credentials, validates getMe and the signed Worker bridge, stores ignored private `.env`, and continues to real polling. A verified active K9 webhook gets a one-time explicit takeover confirmation; another integration is preserved. Later runs start directly without repeating setup or mode switching. Startup checks all required backend scopes and D1 readiness, preserves settings on failure and names exactly what must be fixed before retrying the same command.
+
+No package/path configuration is needed: all internal `k9bot` modules ship with the repository. Configuration and webhook backups live beside `bot.py`. Keep Python running for reception; stop with Ctrl+C. Optional maintenance: `--setup`, `--check`, and `--restore-cloudflare` (after stopping Python, with explicit restoration confirmation). Publishing, rendering, owner auth and shared D1/Cron remain in the existing Worker.
+
+See [the complete Python bot guide](docs/PYTHON_BOT.md) for all 16 commands, dashboard workflows, setup variables, scoped bridge APIs, Termux/Windows instructions, restoration/rollback and remaining live acceptance checks.

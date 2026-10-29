@@ -65,7 +65,7 @@ async function body<T>(request: Request, schema: z.ZodType<T>): Promise<T> {
     );
   return parsed.data;
 }
-function storedDocument(raw: string): EditorDocument {
+export function storedDocument(raw: string): EditorDocument {
   const value: unknown = JSON.parse(raw);
   // Migrate the small Phase 1 stub model on read; no existing records are reset.
   if (
@@ -145,39 +145,60 @@ async function getDraft(
   if (!row) throw new HttpError(404, "NOT_FOUND", "Draft not found.");
   return row;
 }
-async function validateMediaOwnership(
+export async function validateMediaOwnership(
   env: Env,
   doc: EditorDocument,
   owner: string,
 ): Promise<void> {
-  async function walk(blocks: EditorDocument["blocks"]) {
+  const references: {
+    fileId: string;
+    kind: string;
+    libraryId: string | null;
+  }[] = [];
+  function walk(blocks: EditorDocument["blocks"]) {
     for (const b of blocks) {
-      if (b.type === "details" || b.type === "blockquote") await walk(b.blocks);
+      if (b.type === "details" || b.type === "blockquote") walk(b.blocks);
       if (
         (b.type === "photo" || b.type === "video" || b.type === "document") &&
         b.media
       ) {
-        const row = await env.DB.prepare(
-          "SELECT id FROM media WHERE telegram_file_id=? AND kind=? AND owner_telegram_id=? AND (? IS NULL OR id=?)",
-        )
-          .bind(
-            b.media.fileId,
-            b.type,
-            owner,
-            b.media.libraryId,
-            b.media.libraryId,
-          )
-          .first();
-        if (!row)
-          throw new HttpError(
-            400,
-            "MEDIA_NOT_REGISTERED",
-            "Register this file with your bot or media library before saving it.",
-          );
+        references.push({
+          fileId: b.media.fileId,
+          kind: b.type,
+          libraryId: b.media.libraryId,
+        });
       }
     }
   }
-  await walk(doc.blocks);
+  walk(doc.blocks);
+  if (!references.length) return;
+  const fileIds = [...new Set(references.map((x) => x.fileId))];
+  const records: { id: string; telegram_file_id: string; kind: string }[] = [];
+  for (let i = 0; i < fileIds.length; i += 50) {
+    const batch = fileIds.slice(i, i + 50);
+    const rows = await env.DB.prepare(
+      `SELECT id,telegram_file_id,kind FROM media WHERE owner_telegram_id=? AND telegram_file_id IN (${batch.map(() => "?").join(",")})`,
+    )
+      .bind(owner, ...batch)
+      .all<{ id: string; telegram_file_id: string; kind: string }>();
+    records.push(...rows.results);
+  }
+  if (
+    references.some(
+      (ref) =>
+        !records.some(
+          (row) =>
+            row.telegram_file_id === ref.fileId &&
+            row.kind === ref.kind &&
+            (ref.libraryId === null || row.id === ref.libraryId),
+        ),
+    )
+  )
+    throw new HttpError(
+      400,
+      "MEDIA_NOT_REGISTERED",
+      "Register this file with your bot or media library before saving it.",
+    );
 }
 function audit(env: Env, owner: string, action: string, postId: string | null) {
   return env.DB.prepare(
@@ -197,8 +218,8 @@ export async function editorRoutes(
     if (path === "/api/drafts") {
       if (method === "GET") {
         const q = (url.searchParams.get("q") ?? "").slice(0, 160);
-        const offset = Math.max(0, Number(url.searchParams.get("offset") ?? 0));
-        if (!Number.isSafeInteger(offset))
+        const offset = Number(url.searchParams.get("offset") ?? 0);
+        if (!Number.isSafeInteger(offset) || offset < 0)
           throw new HttpError(400, "INVALID_OFFSET", "Invalid offset.");
         const rows = await env.DB.prepare(
           `SELECT id,title,revision,updated_at AS updatedAt FROM posts WHERE status='draft' AND ${ownerSql} AND instr(lower(title),lower(?))>0 ORDER BY updated_at DESC,id LIMIT 51 OFFSET ?`,
@@ -273,8 +294,19 @@ export async function editorRoutes(
       if (!action && method === "DELETE") {
         const input = await body(request, versionSchema);
         await getDraft(env, id, owner);
+        const scheduled = await env.DB.prepare(
+          "SELECT id FROM scheduled_jobs WHERE post_id=? AND status IN ('pending','running') LIMIT 1",
+        )
+          .bind(id)
+          .first();
+        if (scheduled)
+          throw new HttpError(
+            409,
+            "ACTIVE_SCHEDULE",
+            "Cancel this draft’s pending schedules before deleting it.",
+          );
         const result = await env.DB.prepare(
-          `DELETE FROM posts WHERE id=? AND status='draft' AND ${ownerSql} AND revision=? RETURNING id`,
+          `DELETE FROM posts WHERE id=? AND status='draft' AND ${ownerSql} AND revision=? AND NOT EXISTS(SELECT 1 FROM scheduled_jobs WHERE post_id=posts.id AND status IN ('pending','running')) RETURNING id`,
         )
           .bind(id, owner, input.revision)
           .first();
@@ -333,8 +365,25 @@ export async function editorRoutes(
         )
           .bind(owner)
           .all<TemplateRow>();
+        const available: Template[] = [];
+        let unavailableTemplates = 0;
+        for (const row of rows.results) {
+          try {
+            available.push(template(row));
+          } catch (error) {
+            if (!(
+              error instanceof DocumentError ||
+              error instanceof SyntaxError ||
+              (error instanceof HttpError && error.code === "LEGACY_DOCUMENT")
+            ))
+              throw error;
+            // Preserve unsupported legacy data; one record must not block every draft.
+            unavailableTemplates++;
+          }
+        }
         return json({
-          templates: [...SAMPLE_TEMPLATES, ...rows.results.map(template)],
+          templates: [...SAMPLE_TEMPLATES, ...available],
+          unavailableTemplates,
         });
       }
       if (method === "POST") {

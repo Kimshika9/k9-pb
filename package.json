@@ -1,7 +1,7 @@
 {
   "name": "k9-post-studio",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -9,7 +9,8 @@
     "lint": "oxlint",
     "preview": "npm run build && vite preview",
     "deploy": "npm run build && npm run deploy:ci",
-    "deploy:ci": "wrangler deploy && wrangler d1 migrations apply DB --remote",
+    "deploy:ci": "node scripts/deploy.mjs",
+    "deploy:check": "node scripts/deploy.mjs --check",
     "cf-typegen": "wrangler types",
     "typecheck": "tsc -b",
     "test": "vitest run",

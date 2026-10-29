@@ -5,6 +5,7 @@
   "compatibility_date": "2026-10-06",
   "workers_dev": true,
   "keep_vars": true,
+  "triggers": { "crons": ["* * * * *"] },
   "assets": {
     "not_found_handling": "single-page-application",
     "run_worker_first": ["/api/*", "/telegram/*"],
@@ -13,6 +14,7 @@
     {
       "binding": "DB",
       "database_name": "k9-post-studio",
+      "database_id": "cc0aa25b-a278-43de-9df5-f315a052530e",
       "migrations_dir": "migrations",
     },
   ],
