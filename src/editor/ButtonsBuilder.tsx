@@ -1,7 +1,6 @@
 import { Plus, Trash2 } from "lucide-react";
 import type { Block, EditorButton } from "../../shared/editor/model";
-import { plain } from "../../shared/editor/model";
-import { RichTextEditor } from "./RichTextEditor";
+import { plain, textContent } from "../../shared/editor/model";
 
 export function ButtonsBuilder({
   block,
@@ -54,11 +53,20 @@ export function ButtonsBuilder({
               <Trash2 size={14} />
             </button>
           </div>
-          <RichTextEditor
-            label={`Button ${i + 1} label`}
-            value={button.label}
-            onChange={(label) => update(button.id, { label })}
-          />
+          <label>
+            Button {i + 1} label
+            <input
+              value={textContent(button.label)}
+              maxLength={4000}
+              onChange={(e) =>
+                update(button.id, { label: plain(e.target.value) })
+              }
+            />
+          </label>
+          <small className="field-help">
+            Telegram button labels use plain text; Myanmar and English are
+            supported.
+          </small>
           <div className="field-grid">
             <label>
               Action

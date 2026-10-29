@@ -1,9 +1,14 @@
 import type { TelegramUser } from "../../shared/contracts";
 import type { Env } from "../env";
 import { HttpError, isRecord } from "./http";
+import { isBotToken, isOwnerId } from "./config";
+import {
+  MAX_AUTH_AGE_SECONDS,
+  AUTH_CLOCK_SKEW_SECONDS,
+} from "../../shared/auth";
+export { MAX_AUTH_AGE_SECONDS } from "../../shared/auth";
 
 const encoder = new TextEncoder();
-export const MAX_AUTH_AGE_SECONDS = 900;
 export async function hmac(
   key: Uint8Array,
   value: string,
@@ -70,7 +75,7 @@ export async function verifyInitData(
   if (
     !Number.isSafeInteger(Number(authDate)) ||
     age > MAX_AUTH_AGE_SECONDS ||
-    age < -30
+    age < -AUTH_CLOCK_SKEW_SECONDS
   )
     throw invalid();
   let user: unknown;
@@ -101,10 +106,8 @@ export async function verifyInitData(
 }
 export function requireAuthConfig(env: Env): void {
   if (
-    !env.TELEGRAM_BOT_TOKEN ||
-    !/^\d+$/.test(env.OWNER_TELEGRAM_ID ?? "") ||
-    Number(env.OWNER_TELEGRAM_ID) <= 0 ||
-    !Number.isSafeInteger(Number(env.OWNER_TELEGRAM_ID))
+    !isBotToken(env.TELEGRAM_BOT_TOKEN) ||
+    !isOwnerId(env.OWNER_TELEGRAM_ID)
   ) {
     throw new HttpError(
       503,

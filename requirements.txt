@@ -1,0 +1,4 @@
+# Python 3.12+ runtime; bundled k9bot modules need no separate installation.
+python-telegram-bot==22.8
+httpx==0.28.1
+python-dotenv==1.2.4

@@ -208,6 +208,34 @@ describe("persistent owner drafts", () => {
   });
 });
 describe("templates", () => {
+  it("preserves unsupported legacy templates without blocking valid templates or drafts", async () => {
+    const id = crypto.randomUUID();
+    db.sqlite
+      .prepare("INSERT INTO templates (id,name,document_json) VALUES (?,?,?)")
+      .run(
+        id,
+        "Legacy unsupported",
+        JSON.stringify({ version: 1, blocks: [{ type: "unknown" }] }),
+      );
+    const response = await send("/api/templates");
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      unavailableTemplates: 1,
+      templates: expect.any(Array),
+    });
+    expect((await send("/api/drafts")).status).toBe(200);
+    expect(
+      db.sqlite
+        .prepare("SELECT document_json FROM templates WHERE id=?")
+        .get(id),
+    ).toMatchObject({
+      document_json: JSON.stringify({
+        version: 1,
+        blocks: [{ type: "unknown" }],
+      }),
+    });
+    expect((await send("/api/drafts?offset=-1")).status).toBe(400);
+  });
   it("includes four valid samples and allows saving, reuse, rename, duplicate and delete", async () => {
     const samples = (
       (await (await send("/api/templates")).json()) as { templates: Template[] }

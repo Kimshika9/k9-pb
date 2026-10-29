@@ -42,6 +42,7 @@ import { api, ApiError } from "../src/lib/api";
 import { DraftEditor } from "../src/editor/DraftEditor";
 import { BlockCanvas } from "../src/editor/BlockEditor";
 import { PostPreview } from "../src/editor/Preview";
+import { writeRecovery, readRecovery } from "../src/editor/recovery";
 const apiMock = vi.mocked(api);
 const makeDraft = (): Draft => ({
   id: crypto.randomUUID(),
@@ -65,6 +66,8 @@ afterEach(() => {
   cleanup();
   apiMock.mockReset();
   vi.restoreAllMocks();
+  localStorage.clear();
+  sessionStorage.clear();
 });
 describe("visual block canvas", () => {
   it("adds, edits, duplicates, reorders and deletes blocks", () => {
@@ -123,6 +126,74 @@ describe("visual block canvas", () => {
   });
 });
 describe("autosave and conflict recovery", () => {
+  it("restores stale recovery without autosaving over a newer revision", async () => {
+    const draft = { ...makeDraft(), revision: 3 };
+    writeRecovery(
+      {
+        draftId: draft.id,
+        revision: 1,
+        savedAt: Date.now(),
+        value: {
+          title: "Recovered local work",
+          channelId: null,
+          document: draft.document,
+        },
+      },
+      true,
+    );
+    render(
+      <DraftEditor
+        initial={draft}
+        channels={[]}
+        onClose={vi.fn()}
+        onCreated={vi.fn()}
+        onDirtyChange={vi.fn()}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Restore local recovery" }),
+    );
+    expect(screen.getByLabelText("Post title")).toHaveValue(
+      "Recovered local work",
+    );
+    expect(
+      screen.getByRole("button", { name: "Save as new draft" }),
+    ).toBeInTheDocument();
+    expect(apiMock).not.toHaveBeenCalled();
+    expect(readRecovery(draft.id)?.recovery.revision).toBe(1);
+  });
+  it("retains unsaved recovery on expired auth and clears it after a successful retry", async () => {
+    const draft = makeDraft();
+    apiMock.mockRejectedValueOnce(
+      new ApiError(
+        401,
+        "INVALID_AUTH",
+        "Open the studio from Telegram to authenticate.",
+      ),
+    );
+    render(
+      <DraftEditor
+        initial={draft}
+        channels={[]}
+        onClose={vi.fn()}
+        onCreated={vi.fn()}
+        onDirtyChange={vi.fn()}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText("Post title"), {
+      target: { value: "Keep this work" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
+    expect(
+      await screen.findByText(/Reopen the Mini App from your bot/),
+    ).toBeInTheDocument();
+    expect(readRecovery(draft.id)?.recovery.value.title).toBe("Keep this work");
+    apiMock.mockResolvedValue({
+      draft: { ...draft, title: "Keep this work", revision: 2 },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Retry save" }));
+    await waitFor(() => expect(readRecovery(draft.id)).toBeNull());
+  });
   it("debounces saves and restores saved document content", async () => {
     const draft = makeDraft();
     apiMock.mockImplementation(async (_path, options) => ({

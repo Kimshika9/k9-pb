@@ -40,7 +40,7 @@ export function Roadmap() {
           {
             icon: CalendarClock,
             title: "Smart scheduling",
-            text: "Coming in Phase 3: scheduling & publishing.",
+            text: "Available in Posts: approved deliveries & UTC jobs.",
           },
           {
             icon: Layers3,

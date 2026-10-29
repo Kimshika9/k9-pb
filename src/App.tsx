@@ -29,6 +29,7 @@ import type { LucideIcon } from "lucide-react";
 import type { Channel, Dashboard, Profile } from "../shared/contracts";
 import { ApiError, api } from "./lib/api";
 import { telegramInitData } from "./lib/telegram";
+import { useSessionState } from "./lib/session";
 const PostsWorkspace = lazy(() =>
   import("./editor/PostsWorkspace").then((module) => ({
     default: module.PostsWorkspace,
@@ -54,6 +55,7 @@ const navigation: { page: Page; label: string; icon: LucideIcon }[] = [
   { page: "settings", label: "Settings", icon: Settings2 },
 ];
 export default function App() {
+  const session = useSessionState();
   const [editorDirty, setEditorDirty] = useState(false);
   function navigate(next: Page) {
     if (
@@ -176,7 +178,7 @@ export default function App() {
             <CircleHelp size={17} /> Telegram Mini Apps <ArrowRight size={14} />
           </a>
           <div className="sidebar-footer">
-            K9 POST STUDIO <span>PHASE 2</span>
+            K9 POST STUDIO <span>PHASE 3</span>
           </div>
         </div>
       </aside>
@@ -201,6 +203,23 @@ export default function App() {
           </div>
         </header>
         <main id="main-content">
+          {session.warning && (
+            <div className="session-banner" role="status">
+              <LockKeyhole size={18} />
+              <div>
+                <strong>
+                  {session.expired
+                    ? "Your Telegram session has expired"
+                    : "Your Telegram session expires soon"}
+                </strong>
+                <p>
+                  {session.expired
+                    ? "Keep a recovery copy or download a backup of unsaved edits, then close and reopen the Mini App from your bot’s /start button."
+                    : "Save your draft now. Close and reopen the Mini App from your bot to renew access."}
+                </p>
+              </div>
+            </div>
+          )}
           <div className="page-heading">
             <div>
               <div className="eyebrow">YOUR CREATIVE COMMAND CENTER</div>
@@ -274,6 +293,13 @@ export default function App() {
                     ? "Open your bot’s private chat, send /start, and tap “Open K9 Post Studio” to enter your workspace."
                     : state.error.message}
                 </p>
+                {state.error.code === "NOT_CONFIGURED" && (
+                  <p className="access-note">
+                    The server needs its owner and bot configuration. Retrying
+                    cannot finish setup; the studio owner must check the
+                    Worker’s runtime secrets.
+                  </p>
+                )}
                 {telegramInitData && (
                   <button
                     className="button secondary"

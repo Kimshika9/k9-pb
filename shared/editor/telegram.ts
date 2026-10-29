@@ -132,6 +132,10 @@ export function validateForTelegram(
         for (const button of b.buttons) {
           if (!textContent(button.label).trim())
             error("Every button needs a label.");
+          if (button.label.some((run) => run.marks.length > 0))
+            error(
+              "Telegram button labels require plain text. Put the action URL in the destination field.",
+            );
           if (button.action.type === "url" && !isSafeUrl(button.action.value))
             error(
               "Button URLs must use http, https or tg without credentials.",

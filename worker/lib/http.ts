@@ -26,9 +26,18 @@ export async function readJson(request: Request): Promise<unknown> {
   ) {
     throw new HttpError(415, "CONTENT_TYPE", "Send application/json.");
   }
+  const bytes = await readBody(request);
+  try {
+    return JSON.parse(
+      new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(bytes),
+    ) as unknown;
+  } catch {
+    throw new HttpError(400, "INVALID_JSON", "Malformed JSON body.");
+  }
+}
+export async function readBody(request: Request): Promise<Uint8Array> {
   const reader = request.body?.getReader();
-  if (!reader)
-    throw new HttpError(400, "INVALID_BODY", "A JSON body is required.");
+  if (!reader) return new Uint8Array();
   const chunks: Uint8Array[] = [];
   let size = 0;
   while (true) {
@@ -47,13 +56,7 @@ export async function readJson(request: Request): Promise<unknown> {
     bytes.set(chunk, offset);
     offset += chunk.length;
   }
-  try {
-    return JSON.parse(
-      new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(bytes),
-    ) as unknown;
-  } catch {
-    throw new HttpError(400, "INVALID_JSON", "Malformed JSON body.");
-  }
+  return bytes;
 }
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);

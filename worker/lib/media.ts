@@ -199,3 +199,69 @@ export async function registerWebhookMedia(
   });
   return true;
 }
+
+// Only the signed bot bridge may invoke this; same-bot getFile verifies identifiers/size.
+export async function registerBridgeMedia(
+  raw: unknown,
+  env: Env,
+): Promise<MediaItem> {
+  const schema = z.strictObject({
+    fileId: z.string().refine(isFileId),
+    uniqueId: z.string().min(1).max(1024),
+    kind: z.enum(["photo", "video", "document"]),
+    name: z.string().trim().min(1).max(200),
+    mime: z.string().max(100).optional(),
+    width: z
+      .number()
+      .int()
+      .nonnegative()
+      .max(Number.MAX_SAFE_INTEGER)
+      .optional(),
+    height: z
+      .number()
+      .int()
+      .nonnegative()
+      .max(Number.MAX_SAFE_INTEGER)
+      .optional(),
+    duration: z
+      .number()
+      .int()
+      .nonnegative()
+      .max(Number.MAX_SAFE_INTEGER)
+      .optional(),
+  });
+  const parsed = schema.safeParse(raw);
+  if (!parsed.success)
+    throw new HttpError(400, "INVALID_MEDIA", "Invalid bot media metadata.");
+  const value = parsed.data,
+    file = await new TelegramClient(env.TELEGRAM_BOT_TOKEN).getFile(
+      value.fileId,
+    );
+  if (
+    !isFileId(file.file_id) ||
+    file.file_unique_id !== value.uniqueId ||
+    typeof file.file_size !== "number"
+  )
+    throw new HttpError(
+      422,
+      "INVALID_MEDIA",
+      "Telegram did not confirm the media identity and size.",
+    );
+  return store(env, {
+    fileId: file.file_id,
+    uniqueId: file.file_unique_id,
+    kind: value.kind,
+    name: value.name,
+    mime:
+      value.mime ??
+      (value.kind === "photo"
+        ? "image/jpeg"
+        : value.kind === "video"
+          ? "video/mp4"
+          : "application/octet-stream"),
+    size: file.file_size,
+    width: value.width ?? null,
+    height: value.height ?? null,
+    duration: value.duration ?? null,
+  });
+}

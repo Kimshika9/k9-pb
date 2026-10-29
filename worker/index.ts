@@ -6,12 +6,16 @@ import { HttpError, json } from "./lib/http";
 import { editorRoutes } from "./lib/editor-store";
 import { mediaRoutes } from "./lib/media";
 import { webhook } from "./lib/webhook";
+import { bridgeRoutes } from "./lib/bridge-routes";
+import { authenticateCli, authenticateBridge } from "./lib/cli-auth";
+import { publishingRoutes } from "./lib/publishing-routes";
+import { scheduledHandler } from "./lib/scheduler";
 
 export async function handleRequest(
   request: Request,
   env: Env,
 ): Promise<Response> {
-  const url = new URL(request.url);
+  let url = new URL(request.url);
   try {
     if (url.pathname === "/telegram/webhook") {
       if (request.method !== "POST")
@@ -20,7 +24,25 @@ export async function handleRequest(
     }
     if (!url.pathname.startsWith("/api/"))
       throw new HttpError(404, "NOT_FOUND", "Endpoint not found.");
-    const user = await authenticate(request, env);
+    let user;
+    const isBridge = url.pathname.startsWith("/api/bridge/");
+    if (isBridge) {
+      const authenticated = await authenticateBridge(request, env);
+      request = authenticated.request;
+      url = authenticated.url;
+      user = authenticated.user;
+    } else if (url.pathname.startsWith("/api/cli/")) {
+      const authenticated = await authenticateCli(request, env);
+      request = authenticated.request;
+      url = authenticated.url;
+      user = authenticated.user;
+    } else user = await authenticate(request, env);
+    if (!env.DB || typeof env.DB.prepare !== "function")
+      throw new HttpError(
+        503,
+        "STORAGE_NOT_CONFIGURED",
+        "Studio storage is not configured yet.",
+      );
     if (!["GET", "HEAD"].includes(request.method)) {
       const origin = request.headers.get("origin");
       if (origin && origin !== url.origin)
@@ -30,6 +52,12 @@ export async function handleRequest(
           "Cross-origin requests are not allowed.",
         );
     }
+    if (isBridge) {
+      const response = await bridgeRoutes(request, env, url);
+      if (response) return response;
+    }
+    const publishingResponse = await publishingRoutes(request, env, url);
+    if (publishingResponse) return publishingResponse;
     const editorResponse = await editorRoutes(request, env, user, url);
     if (editorResponse) return editorResponse;
     const mediaResponse = await mediaRoutes(request, env, user, url);
@@ -51,10 +79,12 @@ export async function handleRequest(
     if (url.pathname === "/api/dashboard" && request.method === "GET") {
       const [counts, posts, channels] = await Promise.all([
         env.DB.prepare(
-          `SELECT COALESCE(SUM(status='draft'),0) AS drafts, COALESCE(SUM(status='scheduled'),0) AS scheduled,
-          COALESCE(SUM(status='published'),0) AS published FROM posts WHERE (owner_telegram_id=? OR owner_telegram_id IS NULL)`,
+          `SELECT COALESCE(SUM(status='draft'),0) AS drafts,
+          (SELECT count(*) FROM scheduled_jobs WHERE (owner_telegram_id=? OR owner_telegram_id IS NULL) AND status IN ('pending','running')) AS scheduled,
+          (SELECT count(*) FROM publications WHERE owner_telegram_id=? AND kind='publication' AND status='published') AS published
+          FROM posts WHERE (owner_telegram_id=? OR owner_telegram_id IS NULL)`,
         )
-          .bind(String(user.id))
+          .bind(String(user.id), String(user.id), String(user.id))
           .first<{ drafts: number; scheduled: number; published: number }>(),
         env.DB.prepare(
           `SELECT p.id, p.title, p.status, p.updated_at, c.title AS channel_title
@@ -99,4 +129,7 @@ export async function handleRequest(
     );
   }
 }
-export default { fetch: handleRequest } satisfies ExportedHandler<Env>;
+export default {
+  fetch: handleRequest,
+  scheduled: scheduledHandler,
+} satisfies ExportedHandler<Env>;

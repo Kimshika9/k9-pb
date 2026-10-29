@@ -24,11 +24,13 @@ import { ApiError, api } from "../lib/api";
 import { BlockCanvas, BlockProperties } from "./BlockEditor";
 import { useMobileLayout } from "./useMobileLayout";
 import { PostPreview } from "./Preview";
-interface DraftValue {
-  title: string;
-  document: EditorDocument;
-  channelId: string | null;
-}
+import { PublishingPanel } from "./PublishingPanel";
+import {
+  clearRecovery,
+  readRecovery,
+  writeRecovery,
+  type DraftValue,
+} from "./recovery";
 const valueOf = (draft: Draft): DraftValue => ({
   title: draft.title,
   document: draft.document,
@@ -54,6 +56,13 @@ export function DraftEditor({
   onDirtyChange: (dirty: boolean) => void;
 }) {
   const mobile = useMobileLayout();
+  const [pendingRecovery, setPendingRecovery] = useState(() =>
+    readRecovery(initial.id),
+  );
+  const [persistentRecovery, setPersistentRecovery] = useState(
+    () => readRecovery(initial.id)?.persistent ?? false,
+  );
+  const [recoveryFailed, setRecoveryFailed] = useState(false);
   const [value, setValue] = useState<DraftValue>(() => valueOf(initial));
   const [selectedId, setSelectedId] = useState<string | null>(
     initial.document.blocks[0]?.id ?? null,
@@ -80,6 +89,51 @@ export function DraftEditor({
     dirty = snapshot !== savedSnapshot;
   const issues = validateForTelegram(value.document),
     selected = value.document.blocks.find((b) => b.id === selectedId);
+  useEffect(() => {
+    if (pendingRecovery) return;
+    if (!dirty) {
+      clearRecovery(initial.id);
+      return;
+    }
+    const stored = writeRecovery(
+      {
+        draftId: initial.id,
+        revision: base.current.revision,
+        savedAt: Date.now(),
+        value,
+      },
+      persistentRecovery,
+    );
+    // Report storage failure without replacing the server-save status.
+    // oxlint-disable-next-line react/set-state-in-effect
+    setRecoveryFailed(!stored);
+  }, [
+    value,
+    dirty,
+    pendingRecovery,
+    persistentRecovery,
+    initial.id,
+    savedRevision,
+  ]);
+  function restoreRecovery() {
+    if (!pendingRecovery) return;
+    const recovered = pendingRecovery.recovery;
+    const serverRevision = base.current.revision;
+    base.current = { ...base.current, revision: recovered.revision };
+    setValue(recovered.value);
+    if (recovered.revision !== serverRevision)
+      setError(
+        new ApiError(
+          409,
+          "VERSION_CONFLICT",
+          "The saved draft changed since this recovery copy. Reload the saved version or save your recovered work as a new draft.",
+        ),
+      );
+    setPendingRecovery(null);
+    setNotice(
+      "Recovery restored locally. Server authentication and revision checks still apply.",
+    );
+  }
   useEffect(() => {
     mounted.current = true;
     return () => {
@@ -200,6 +254,7 @@ export function DraftEditor({
           document: cloneDocument(latest.current.document),
         }),
       });
+      clearRecovery(initial.id);
       onCreated(result.draft);
     } catch (e) {
       setError(
@@ -246,6 +301,28 @@ export function DraftEditor({
   }
   return (
     <section className="draft-editor">
+      {pendingRecovery && (
+        <div className="recovery-banner" role="status">
+          <strong>Unsaved recovery copy available</strong>
+          <p>
+            Restore your local edits or keep the version loaded from the server.
+          </p>
+          <div className="builder-controls">
+            <button className="button secondary" onClick={restoreRecovery}>
+              Restore local recovery
+            </button>
+            <button
+              className="button secondary"
+              onClick={() => {
+                clearRecovery(initial.id);
+                setPendingRecovery(null);
+              }}
+            >
+              Discard local recovery
+            </button>
+          </div>
+        </div>
+      )}
       <div className="editor-topline">
         <button className="text-button" onClick={leave}>
           <ArrowLeft size={16} /> All drafts
@@ -338,6 +415,25 @@ export function DraftEditor({
           <Download size={15} /> Backup
         </a>
       </div>
+      <label className="check-field recovery-option">
+        <input
+          type="checkbox"
+          checked={persistentRecovery}
+          onChange={(e) => setPersistentRecovery(e.target.checked)}
+        />
+        Keep unsaved recovery on this device for up to 7 days
+      </label>
+      <p className="field-help">
+        Recovery contains private post content. Enable device storage only on a
+        device you trust. Download Backup before closing Telegram if device
+        recovery is off.
+      </p>
+      {recoveryFailed && (
+        <p className="error-inline" role="alert">
+          Recovery storage is unavailable. Download a backup before closing;
+          your server draft is unchanged.
+        </p>
+      )}
       {notice && (
         <p className="editor-notice" role="status">
           {notice}
@@ -418,6 +514,19 @@ export function DraftEditor({
           </button>
         </form>
       )}
+      <PublishingPanel
+        postId={initial.id}
+        revision={savedRevision}
+        valid={
+          !dirty &&
+          !saving &&
+          !validationError &&
+          !pendingRecovery &&
+          issues.length === 0
+        }
+        channels={channels}
+        initialChannelId={value.channelId}
+      />
       <div className="editor-tabbar" role="tablist" aria-label="Editor views">
         {[
           { key: "edit" as const, label: "Editor", icon: LayoutPanelLeft },

@@ -45,9 +45,23 @@ export async function api<T>(
       .catch(() => null)) as ApiErrorBody | null;
     throw new ApiError(
       response.status,
-      body?.error.code ?? "REQUEST_FAILED",
-      body?.error.message ?? "The request failed. Please try again.",
+      typeof body?.error?.code === "string"
+        ? body.error.code
+        : "REQUEST_FAILED",
+      typeof body?.error?.message === "string"
+        ? body.error.message
+        : "The request failed. Please try again.",
     );
   }
-  return response.json() as Promise<T>;
+  try {
+    if (!response.headers.get("content-type")?.includes("application/json"))
+      throw new Error();
+    return (await response.json()) as T;
+  } catch {
+    throw new ApiError(
+      502,
+      "INVALID_RESPONSE",
+      "The studio returned an unexpected response. Please try again.",
+    );
+  }
 }

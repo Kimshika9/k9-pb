@@ -2720,3 +2720,98 @@ h1 {
 .light .telegram-message .rich-button.link {
   color: #236b9f !important;
 }
+
+.session-banner,
+.recovery-banner {
+  display: flex;
+  gap: 12px;
+  padding: 16px;
+  margin-bottom: 20px;
+  border: 1px solid #456bd4;
+  border-radius: 14px;
+  background: #182239;
+  overflow-wrap: anywhere;
+}
+.session-banner svg {
+  flex-shrink: 0;
+}
+.session-banner p,
+.recovery-banner p {
+  margin: 6px 0 0;
+  color: #bdc8de;
+}
+.recovery-banner {
+  display: block;
+}
+.recovery-banner .builder-controls {
+  margin-top: 12px;
+}
+.recovery-option {
+  margin: 12px 0 8px;
+}
+.publishing-panel {
+  margin: 24px 0;
+  padding: 20px;
+  border: 1px solid #314567;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #17243ac9, #111926e8);
+}
+.publishing-panel label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 12px 0;
+  font-size: 13px;
+  color: #bdc8de;
+  min-width: 0;
+}
+.publishing-panel input,
+.publishing-panel select {
+  min-width: 0;
+  width: 100%;
+}
+.operation-note {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 12px 0;
+  overflow-wrap: anywhere;
+}
+.operation-note code {
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.delivery-workspace .draft-card h3 {
+  margin: 10px 0;
+  overflow-wrap: anywhere;
+}
+.delivery-workspace .draft-card .text-button {
+  margin-top: 12px;
+}
+.publication-detail p {
+  overflow-wrap: anywhere;
+}
+.posts-workspace .segmented-tabs {
+  flex-wrap: wrap;
+}
+@media (max-width: 640px) {
+  .publishing-panel {
+    padding: 14px;
+  }
+  .publishing-panel .field-grid {
+    grid-template-columns: 1fr;
+  }
+  .publishing-panel .button {
+    min-height: 44px;
+  }
+}
+@media (max-width: 640px) {
+  .table-builder th button,
+  .table-builder td > button:not(.table-cell) {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  .session-banner {
+    padding: 12px;
+  }
+}

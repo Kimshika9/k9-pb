@@ -254,7 +254,7 @@ export function RichTextEditor({
             className="button secondary"
             type="button"
             onClick={() => {
-              editor.chain().focus().extendMarkRange("link").unsetLink().run();
+              formatChain().extendMarkRange("link").unsetLink().run();
               setLinkOpen(false);
             }}
           >
